@@ -1,4 +1,33 @@
+# Python
 __pycache__/
+*. py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Model weights (nếu không dùng Git LFS)
+# *.pth
+
+# IDE
 .vscode/
-*.pyc
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
 patient_records/

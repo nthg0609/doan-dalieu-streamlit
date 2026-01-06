@@ -1,12 +1,31 @@
-streamlit>=1.30.0
-torch
-torchvision
-timm>=0.9.0
-segmentation-models-pytorch
-numpy
-opencv-python-headless
-Pillow
-fpdf2
-pandas
-cloudinary
-st-gsheets-connection
+# Core
+streamlit==1.31.0
+python-dotenv==1.0.0
+
+# Google Sheets (nếu dùng)
+gspread==5.12.4
+google-auth==2.26.2
+oauth2client==4.1.3
+
+# Cloud Storage
+cloudinary==1.37.0
+
+# Deep Learning
+torch==2.1.2+cpu
+torchvision==0.16.2+cpu
+--find-links https://download.pytorch.org/whl/torch_stable.html
+
+timm==0.9.12
+segmentation-models-pytorch==0.3.3
+
+# Computer Vision
+opencv-python-headless==4.9.0.80
+Pillow==10.2.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.3
+requests==2.31.0
+
+# Optional (nếu cần PDF)
+reportlab==4.0.9
