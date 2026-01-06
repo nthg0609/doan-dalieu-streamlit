@@ -16,6 +16,36 @@ warnings.filterwarnings("ignore")
 
 import urllib.request
 
+import urllib.request
+import os
+
+def setup_vietnamese_font():
+    """Tải và đăng ký font tiếng Việt cho PDF"""
+    font_dir = "fonts"
+    os.makedirs(font_dir, exist_ok=True)
+    
+    font_path = os.path.join(font_dir, "NotoSans-Regular.ttf")
+    font_bold_path = os.path.join(font_dir, "NotoSans-Bold.ttf")
+    
+    # Tải font Noto Sans (hỗ trợ tiếng Việt tốt)
+    if not os.path.exists(font_path):
+        st. info("Đang tải font tiếng Việt...")
+        urllib.request.urlretrieve(
+            "https://github.com/google/fonts/raw/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf",
+            font_path
+        )
+    
+    if not os.path.exists(font_bold_path):
+        urllib.request.urlretrieve(
+            "https://github.com/google/fonts/raw/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf",
+            font_bold_path
+        )
+    
+    return font_path, font_bold_path
+
+# Gọi setup font khi app khởi động
+FONT_PATH, FONT_BOLD_PATH = setup_vietnamese_font()
+
 def download_if_missing(url, filename):
     if not os.path.exists(filename):
         st.info(f"Đang tải {filename}...")
@@ -379,16 +409,11 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     """Tạo báo cáo PDF với font tiếng Việt"""
     
     # ===== ĐĂNG KÝ FONT TIẾNG VIỆT =====
-    try:
-        # Thử dùng font DejaVu (có sẵn trên Linux)
-        pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
-        pdfmetrics.registerFont(TTFont('DejaVu-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold. ttf'))
-        font_name = 'DejaVu'
-        font_bold = 'DejaVu-Bold'
-    except: 
-        # Fallback:  Dùng Helvetica (không hỗ trợ tiếng Việt tốt)
-        font_name = 'Helvetica'
-        font_bold = 'Helvetica-Bold'
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    
+    pdfmetrics.registerFont(TTFont('VietnameseFont', FONT_PATH))
+    pdfmetrics.registerFont(TTFont('VietnameseFont-Bold', FONT_BOLD_PATH))
     
     # Tạo buffer
     buffer = BytesIO()
@@ -397,15 +422,15 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, 
                            topMargin=2*cm, bottomMargin=2*cm)
     
-    # Container cho elements
+    # Container
     elements = []
     
-    # Styles
+    # Styles với font tiếng Việt
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontName=font_bold,  # ← SỬA
+        fontName='VietnameseFont-Bold',
         fontSize=18,
         textColor=colors.HexColor('#1f77b4'),
         spaceAfter=20,
@@ -415,7 +440,7 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
-        fontName=font_bold,  # ← SỬA
+        fontName='VietnameseFont-Bold',
         fontSize=14,
         textColor=colors. HexColor('#2ca02c'),
         spaceAfter=10
@@ -444,8 +469,8 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), font_bold),  # ← SỬA (cột trái bold)
-        ('FONTNAME', (1, 0), (1, -1), font_name),  # ← SỬA (cột phải normal)
+        ('FONTNAME', (0, 0), (0, -1), 'VietnameseFont-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'VietnameseFont'),
         ('FONTSIZE', (0, 0), (-1, -1), 11),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
         ('GRID', (0, 0), (-1, -1), 1, colors.grey)
@@ -454,11 +479,10 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     elements.append(table)
     elements.append(Spacer(1, 1*cm))
     
-    # Thêm ảnh overlay
+    # Ảnh overlay
     heading = Paragraph("Ảnh Overlay (Phân vùng tổn thương)", heading_style)
     elements.append(heading)
     
-    # Convert numpy array to PIL Image
     overlay_pil = Image.fromarray(overlay_img)
     img_buffer = BytesIO()
     overlay_pil.save(img_buffer, format='PNG')
@@ -468,11 +492,11 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     elements.append(img)
     elements.append(Spacer(1, 0.5*cm))
     
-    # Thêm ảnh mask
+    # Ảnh mask
     heading2 = Paragraph("Mask Phân vùng", heading_style)
     elements.append(heading2)
     
-    mask_pil = Image. fromarray(mask_img)
+    mask_pil = Image.fromarray(mask_img)
     mask_buffer = BytesIO()
     mask_pil.save(mask_buffer, format='PNG')
     mask_buffer.seek(0)
@@ -481,13 +505,14 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     elements.append(img2)
     
     # Footer
-    elements.append(Spacer(1, 1*cm))
-    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontName=font_name, fontSize=10)
+    elements. append(Spacer(1, 1*cm))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], 
+                                  fontName='VietnameseFont', fontSize=10)
     footer_text = "<i>Báo cáo được tạo tự động bởi Hệ thống Chẩn đoán Da liễu AI</i>"
     footer = Paragraph(footer_text, footer_style)
     elements.append(footer)
     
-    # Build PDF
+    # Build
     doc.build(elements)
     
     buffer.seek(0)
@@ -621,8 +646,9 @@ with tabs[0]:
         else:
             st.warning("Vui lòng nhập đầy đủ thông tin và tải ảnh lên")
 
+
 # TAB 2: TRA CỨU BỆNH ÁN
-with tabs[1]:  
+with tabs[1]:    
     st.header("Tra cứu bệnh án")
     
     search_name = st.text_input("Tìm kiếm theo tên bệnh nhân (để trống = tất cả)", key="search_name")
@@ -634,13 +660,13 @@ with tabs[1]:
 
     st.divider()
     
-    record_id = st.text_input("Nhập ID bệnh án", key="record_id_load")
+    record_id_search = st.text_input("Nhập ID bệnh án để xem chi tiết", key="record_id_load")
     
     if st.button("Xem bệnh án", key="btn_load"):
         with st.spinner("Đang tải ảnh..."):
-            orig, overlay, mask, info = load_patient_images(record_id)
+            orig, overlay, mask, info = load_patient_images(record_id_search)
         
-        if orig is not None:  
+        if orig is not None:    
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -653,5 +679,37 @@ with tabs[1]:
                 st.image(mask, caption="Mask phân vùng", use_container_width=True)
             
             st.info(info)
+            
+            # ===== THÊM NÚT PDF =====
+            # Lấy thông tin từ Google Sheets
+            try:
+                worksheet = get_gsheets_client()
+                records = worksheet.get_all_records()
+                df = pd.DataFrame(records)
+                record_data = df[df['record_id'] == record_id_search]. iloc[0]
+                
+                with st.spinner("Đang tạo báo cáo PDF..."):
+                    pdf_buffer = generate_pdf_report(
+                        record_data['record_id'],
+                        record_data['name'],
+                        record_data['age'],
+                        record_data['gender'],
+                        record_data['note'],
+                        record_data['diagnosis'],
+                        float(record_data['confidence']),
+                        record_data['timestamp'],
+                        overlay,
+                        mask
+                    )
+                
+                st.download_button(
+                    label="📥 Tải báo cáo PDF",
+                    data=pdf_buffer,
+                    file_name=f"benh_an_{record_id_search}.pdf",
+                    mime="application/pdf",
+                    key="btn_pdf_lookup"
+                )
+            except Exception as e:
+                st.error(f"Không thể tạo PDF: {e}")
         else:
             st.warning(info)
