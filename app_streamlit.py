@@ -90,44 +90,50 @@ def load_all_models():
         import segmentation_models_pytorch as smp
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        def get_path(json_file):
-            with open(json_file, "r") as f:
-                data = json.load(f)
-            # Lấy tên file gốc từ JSON
-            p = data["paths"]["best_model"]
-            fname = os.path.basename(p)
-            # Kiểm tra xem file có tồn tại trên server không
-            if not os.path.exists(fname):
-                raise FileNotFoundError(f"Không tìm thấy file trọng số: {fname} (Gốc: {p})")
-            return fname, data
+        # 1. Đọc cấu hình JSON (chỉ lấy thông tin num_classes, class_to_idx)
+        with open("02_unet_complete.json", "r") as f: unet_ckpt = json.load(f)
+        with open("03_deeplabv3plus_complete.json", "r") as f: deeplab_ckpt = json.load(f)
+        with open("06_classification_complete.json", "r") as f: cls_ckpt = json.load(f)
 
-        # Load Paths
-        unet_p, unet_ckpt = get_path("02_unet_complete.json")
-        dl_p, deeplab_ckpt = get_path("03_deeplabv3plus_complete.json")
-        cls_p, cls_ckpt = get_path("06_classification_complete.json")
+        # 2. KHỚP CỨNG TÊN FILE (Theo đúng ảnh GitHub của bạn)
+        # Lưu ý: Kiểm tra kỹ từng chữ hoa/thường để khớp 100% với GitHub
+        unet_weight = "unet_best.pth"
+        deeplab_weight = "deeplabv3plus_best.pth"
+        cls_weight = "efficientnet_attention_best.pth" # Hoặc "06_classification_finetuned.pth" tùy bạn chọn
 
-        # Load UNet
+        # Kiểm tra sự tồn tại trước khi load
+        for f in [unet_weight, deeplab_weight, cls_weight]:
+            if not os.path.exists(f):
+                raise FileNotFoundError(f"Không tìm thấy file: {f}. Hãy kiểm tra tên file trên GitHub!")
+
+        # 3. Load UNet
         unet = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1)
-        unet.load_state_dict(torch.load(unet_p, map_location=device)["model_state_dict"])
+        unet.load_state_dict(torch.load(unet_weight, map_location=device)["model_state_dict"])
         
-        # Load DeepLab
+        # 4. Load DeepLabV3+
         deeplab = smp.DeepLabV3Plus(encoder_name="resnet50", encoder_weights=None, in_channels=3, classes=1)
-        deeplab.load_state_dict(torch.load(dl_p, map_location=device)["model_state_dict"])
+        deeplab.load_state_dict(torch.load(deeplab_weight, map_location=device)["model_state_dict"])
         
         hybrid_model = HybridSegmentation(unet, deeplab).eval().to(device)
 
-        # Load Classification
+        # 5. Load Classification (EfficientNet + Attention)
         num_classes = cls_ckpt["config"]["num_classes"]
         cls_model = EfficientNetWithAttention(num_classes=num_classes)
-        state = torch.load(cls_p, map_location=device)
+        state = torch.load(cls_weight, map_location=device)
         cls_model.load_state_dict(state['model_state_dict'])
         cls_model = cls_model.eval().to(device)
         
-        # Mapping
+        # Mapping nhãn
         class_to_idx = state.get("class_to_idx") or cls_ckpt.get("class_to_idx")
         idx_to_class = {v: k for k, v in class_to_idx.items()}
 
         return hybrid_model, cls_model, idx_to_class, device
+
+    except Exception as e:
+        st.error(f"LỖI HỆ THỐNG: {str(e)}")
+        # Hiện danh sách file thực tế trên server để bạn đối chiếu
+        st.write("Các file hiện có trên GitHub server:", os.listdir("."))
+        st.stop()
 
     except Exception as e:
         # NẾU CÓ LỖI, NÓ SẼ HIỆN RA MÀN HÌNH WEB
