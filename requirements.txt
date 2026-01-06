@@ -4,8 +4,8 @@ google-auth==2.26.2
 oauth2client==4.1.3
 cloudinary==1.37.0
 
-torch==2.5.1
-torchvision==0.20.1
+torch
+torchvision
 timm==1.0.3
 segmentation-models-pytorch==0.3.3
 
