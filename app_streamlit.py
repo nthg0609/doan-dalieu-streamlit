@@ -182,7 +182,7 @@ def load_all_models():
 
         # 2. Tên file weights
         unet_weight = "unet_best.pth"
-        deeplab_weight = "deeplabv3plus_best. pth"
+        deeplab_weight = "deeplabv3plus_best.pth"
         cls_weight = "efficientnet_attention_best.pth"
 
         # Kiểm tra tồn tại
@@ -219,7 +219,7 @@ def load_all_models():
 
     except Exception as e:  
         st.error(f"LỖI KHI TẢI MÔ HÌNH: {str(e)}")
-        st.write("Các file hiện có trên server:", os.listdir(". "))
+        st.write("Các file hiện có trên server:", os.listdir("."))
         st.stop()
 
 # Gọi load models
