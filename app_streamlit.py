@@ -14,6 +14,41 @@ import requests
 import warnings
 warnings.filterwarnings("ignore")
 
+# ==== Google Sheets Setup ====
+import gspread
+from google.oauth2.service_account import Credentials
+
+def get_gsheets_client():
+    """Kết nối Google Sheets bằng gspread"""
+    try:
+        # Lấy credentials từ st.secrets
+        credentials_dict = st.secrets["gsheets"]["service_account"]
+        
+        # Tạo credentials object
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        
+        credentials = Credentials.from_service_account_info(
+            credentials_dict,
+            scopes=scopes
+        )
+        
+        # Kết nối gspread
+        client = gspread.authorize(credentials)
+        
+        # Mở spreadsheet
+        spreadsheet_url = st.secrets["gsheets"]["spreadsheet"]
+        spreadsheet = client.open_by_url(spreadsheet_url)
+        worksheet = spreadsheet.worksheet("Sheet1")
+        
+        return worksheet
+    
+    except Exception as e:
+        st.error(f"❌ Lỗi kết nối Google Sheets: {e}")
+        st.stop()
+
 # ==== SAFE FILENAME ====
 def safe_str(s):
     return "".join(c for c in s if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')
@@ -21,28 +56,38 @@ def safe_str(s):
 import cloudinary
 import cloudinary.uploader
 
-# Cấu hình Cloudinary (Dùng st.secrets để bảo mật)
+# Cấu hình Cloudinary
 cloudinary.config( 
     cloud_name = "dq7whcy51", 
     api_key = "677482925994952", 
     api_secret = "1WYJ_fYnUu_nNhgDqLfRCVSAr1Q" 
 )
 
-# Kết nối Google Sheets
-conn = st.connection("gsheets")
-
 def upload_to_cloud(image_path):
     """Upload ảnh lên Cloudinary"""
     response = cloudinary.uploader.upload(image_path)
     return response['secure_url']
 
-def save_to_gsheets(data_row):
+def save_to_gsheets(data_dict):
     """Lưu dữ liệu vào Google Sheets"""
     try: 
-        existing_data = conn.read(worksheet="Sheet1")
-        updated_df = pd.concat([existing_data, data_row], ignore_index=True)
-        conn.update(worksheet="Sheet1", data=updated_df)
-    except Exception as e:
+        worksheet = get_gsheets_client()
+        
+        # Lấy dữ liệu hiện tại
+        existing_data = worksheet.get_all_records()
+        
+        # Nếu sheet trống, thêm header
+        if not existing_data: 
+            headers = list(data_dict.keys())
+            worksheet.append_row(headers)
+        
+        # Thêm dòng mới
+        new_row = list(data_dict.values())
+        worksheet.append_row(new_row)
+        
+        st.success("✅ Đã lưu vào Google Sheets")
+    
+    except Exception as e: 
         st.error(f"Lỗi khi lưu vào Google Sheets: {e}")
 
 # =================================================================
@@ -64,7 +109,7 @@ class ChannelAttention(nn.Module):
     def __init__(self, in_channels, reduction=16):
         super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.max_pool = nn. AdaptiveMaxPool2d(1)
         self.fc = nn.Sequential(
             nn. Conv2d(in_channels, in_channels // reduction, 1, bias=False),
             nn.ReLU(inplace=True),
@@ -132,18 +177,18 @@ def load_all_models():
             unet_ckpt = json.load(f)
         with open("03_deeplabv3plus_complete.json", "r") as f:  
             deeplab_ckpt = json.load(f)
-        with open("06_classification_complete.json", "r") as f: 
+        with open("06_classification_complete.json", "r") as f:  
             cls_ckpt = json.load(f)
 
-        # 2. Tên file weights (khớp với GitHub)
+        # 2. Tên file weights
         unet_weight = "unet_best.pth"
         deeplab_weight = "deeplabv3plus_best. pth"
         cls_weight = "efficientnet_attention_best.pth"
 
         # Kiểm tra tồn tại
-        for f in [unet_weight, deeplab_weight, cls_weight]: 
+        for f in [unet_weight, deeplab_weight, cls_weight]:  
             if not os.path.exists(f):
-                raise FileNotFoundError(f"Không tìm thấy file:  {f}")
+                raise FileNotFoundError(f"Không tìm thấy file: {f}")
 
         # 3. Load UNet
         unet = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1)
@@ -168,7 +213,7 @@ def load_all_models():
 
         return hybrid_model, cls_model, idx_to_class, device
 
-    except Exception as e: 
+    except Exception as e:  
         st.error(f"LỖI KHI TẢI MÔ HÌNH: {str(e)}")
         st.write("Các file hiện có trên server:", os.listdir(". "))
         st.stop()
@@ -190,9 +235,9 @@ def preprocess_for_classification(roi):
     import torchvision.transforms as transforms
     img = Image.fromarray(roi)
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms. Resize((224, 224)),
+        transforms. ToTensor(),
+        transforms. Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     return transform(img).unsqueeze(0)
 
@@ -218,12 +263,10 @@ def extract_roi(image, mask):
     return crop
 
 # =================================================================
-# 4. HÀM INFERENCE CHÍNH (ĐÃ SỬA)
+# 4. HÀM INFERENCE CHÍNH
 # =================================================================
 def run_inference(image, patient_name, age, gender, note):
-    """
-    Chạy inference và lưu kết quả lên Cloudinary + Google Sheets
-    """
+    """Chạy inference và lưu kết quả"""
     record_id = str(uuid.uuid4())[:8]
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -233,7 +276,6 @@ def run_inference(image, patient_name, age, gender, note):
     with torch.no_grad():
         mask_pred = hybrid(img_tensor).squeeze().cpu().numpy()
     
-    # Resize mask về kích thước gốc
     mask_resized = cv2.resize(mask_pred, (image.shape[1], image.shape[0]))
     mask_binary = (mask_resized > 0.5).astype(np.uint8)
     
@@ -260,7 +302,7 @@ def run_inference(image, patient_name, age, gender, note):
     # 5. Tạo mask visualization
     mask_vis = cv2.cvtColor(np.uint8(mask_binary * 255), cv2.COLOR_GRAY2BGR)
     
-    # 6. Upload ảnh lên Cloudinary (Dùng bộ nhớ đệm)
+    # 6. Upload ảnh lên Cloudinary
     def upload_cv2(img_np, filename):
         _, buffer = cv2.imencode('.jpg', img_np)
         res = cloudinary.uploader.upload(buffer. tobytes(), folder="skin_app", public_id=f"{record_id}_{filename}")
@@ -270,29 +312,24 @@ def run_inference(image, patient_name, age, gender, note):
     url_ov = upload_cv2(cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR), "overlay")
     url_mask = upload_cv2(mask_vis, "mask")
     
-    # 7. Chuẩn bị dữ liệu để lưu vào Google Sheets
-    new_data = pd.DataFrame([{
+    # 7. Lưu vào Google Sheets
+    data_dict = {
         "record_id": record_id,
         "timestamp": timestamp,
         "name": patient_name,
-        "age": age,
+        "age": int(age),
         "gender": gender,
-        "note":  note,
+        "note": note,
         "diagnosis": label,
-        "confidence":  float(conf),
+        "confidence": float(conf),
         "url_orig": url_orig,
         "url_ov": url_ov,
         "url_mask": url_mask
-    }])
+    }
     
-    # 8. Ghi vào Google Sheets
-    try:
-        df = conn.read(worksheet="Sheet1")
-        conn.update(worksheet="Sheet1", data=pd.concat([df, new_data], ignore_index=True))
-    except: 
-        conn.update(worksheet="Sheet1", data=new_data)
+    save_to_gsheets(data_dict)
     
-    # 9. Tạo thông tin hiển thị
+    # 8. Thông tin hiển thị
     info = f"""
 ID: {record_id}
 Chẩn đoán: {label}
@@ -308,8 +345,14 @@ Bệnh nhân: {patient_name}
 # =================================================================
 def search_patient_records(patient_name=""):
     """Tìm kiếm bệnh án theo tên"""
-    try:
-        df = conn.read(worksheet="Sheet1")
+    try: 
+        worksheet = get_gsheets_client()
+        records = worksheet.get_all_records()
+        
+        if not records:
+            return "Chưa có bệnh án nào được lưu."
+        
+        df = pd.DataFrame(records)
         
         if patient_name:
             df = df[df['name'].str.contains(patient_name, case=False, na=False)]
@@ -324,19 +367,22 @@ def search_patient_records(patient_name=""):
                 f"ID: {r['record_id']}\n"
                 f"Thời gian: {r['timestamp']}\n"
                 f"Bệnh nhân: {r['name']}, {r['age']} tuổi\n"
-                f"Chẩn đoán: {r['diagnosis']} ({r['confidence']*100:.2f}%)\n"
+                f"Chẩn đoán: {r['diagnosis']} ({float(r['confidence'])*100:.2f}%)\n"
                 f"---\n"
             )
         
         return output
     
-    except Exception as e:
-        return f"Lỗi khi tìm kiếm:  {e}"
+    except Exception as e: 
+        return f"Lỗi khi tìm kiếm: {e}"
 
 def load_patient_images(record_id):
     """Load ảnh từ Cloudinary dựa trên record_id"""
     try: 
-        df = conn.read(worksheet="Sheet1")
+        worksheet = get_gsheets_client()
+        records = worksheet.get_all_records()
+        
+        df = pd.DataFrame(records)
         row = df[df['record_id'] == record_id]
         
         if row.empty:
@@ -366,7 +412,7 @@ def load_patient_images(record_id):
             info
         )
     
-    except Exception as e: 
+    except Exception as e:  
         return None, None, None, f"Lỗi khi tải ảnh: {e}"
 
 # =================================================================
@@ -378,7 +424,7 @@ st.title("🩺 Hệ thống Chẩn đoán bệnh da liễu AI")
 tabs = st.tabs(["Chẩn đoán mới", "Tra cứu bệnh án"])
 
 # TAB 1: CHẨN ĐOÁN MỚI
-with tabs[0]:
+with tabs[0]: 
     st.header("Chẩn đoán mới (AI Diagnosis)")
     
     uploaded = st.file_uploader("Tải ảnh tổn thương", type=["jpg", "png", "jpeg"])
@@ -388,25 +434,22 @@ with tabs[0]:
     note = st.text_area("Ghi chú (Tiền sử, mô tả triệu chứng ... )")
     
     if st.button("Chẩn đoán"):
-        if uploaded and patient_name and age: 
-            # Đọc ảnh
+        if uploaded and patient_name and age:  
             file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, 1)
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             
-            # Chạy inference
             with st.spinner("Đang phân tích..."):
                 overlay, info, record_id = run_inference(img_rgb, patient_name, age, gender, note)
             
-            # Hiển thị kết quả
             st.image(overlay, caption="Ảnh Overlay (Phân vùng + Gốc)", use_container_width=True)
             st.success(info)
             st.write(f"ID bệnh án (medical record ID): `{record_id}`\n(Lưu lại để tra cứu)")
         else:
-            st.warning("Vui lòng nhập đầy đủ thông tin và tải ảnh lên")
+            st. warning("Vui lòng nhập đầy đủ thông tin và tải ảnh lên")
 
 # TAB 2: TRA CỨU BỆNH ÁN
-with tabs[1]: 
+with tabs[1]:  
     st.header("Tra cứu bệnh án")
     
     search_name = st.text_input("Tìm kiếm theo tên bệnh nhân (để trống = tất cả)", key="search_name")
@@ -424,7 +467,7 @@ with tabs[1]:
         with st.spinner("Đang tải ảnh..."):
             orig, overlay, mask, info = load_patient_images(record_id)
         
-        if orig is not None: 
+        if orig is not None:  
             col1, col2, col3 = st.columns(3)
             
             with col1:
