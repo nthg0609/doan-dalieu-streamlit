@@ -190,20 +190,24 @@ def load_all_models():
             if not os.path.exists(f):
                 raise FileNotFoundError(f"Không tìm thấy file: {f}")
 
-        # 3. Load UNet
+        # 3. Load UNet - THÊM weights_only=False
         unet = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1)
-        unet.load_state_dict(torch.load(unet_weight, map_location=device)["model_state_dict"])
+        unet.load_state_dict(
+            torch.load(unet_weight, map_location=device, weights_only=False)["model_state_dict"]
+        )
         
-        # 4. Load DeepLabV3+
+        # 4. Load DeepLabV3+ - THÊM weights_only=False
         deeplab = smp.DeepLabV3Plus(encoder_name="resnet50", encoder_weights=None, in_channels=3, classes=1)
-        deeplab.load_state_dict(torch.load(deeplab_weight, map_location=device)["model_state_dict"])
+        deeplab.load_state_dict(
+            torch. load(deeplab_weight, map_location=device, weights_only=False)["model_state_dict"]
+        )
         
         hybrid_model = HybridSegmentation(unet, deeplab).eval().to(device)
 
-        # 5. Load Classification
+        # 5. Load Classification - THÊM weights_only=False
         num_classes = cls_ckpt["config"]["num_classes"]
         cls_model = EfficientNetWithAttention(num_classes=num_classes)
-        state = torch.load(cls_weight, map_location=device)
+        state = torch.load(cls_weight, map_location=device, weights_only=False)
         cls_model.load_state_dict(state['model_state_dict'])
         cls_model = cls_model.eval().to(device)
         
