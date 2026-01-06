@@ -14,6 +14,18 @@ import requests
 import warnings
 warnings.filterwarnings("ignore")
 
+import urllib.request
+
+def download_if_missing(url, filename):
+    if not os.path.exists(filename):
+        st.info(f"Đang tải {filename}...")
+        urllib.request. urlretrieve(url, filename)
+        st.success(f"✅ Đã tải {filename}")
+
+# Tải file DeepLab nếu chưa có
+download_if_missing(
+    "https://huggingface.co/spaces/nthg0609/DoAn_DaLieu/resolve/main/deeplabv3plus_best.pth"
+)
 # ==== Google Sheets Setup ====
 import gspread
 from google.oauth2.service_account import Credentials
