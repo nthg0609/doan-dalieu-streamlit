@@ -348,15 +348,134 @@ def run_inference(image, patient_name, age, gender, note):
     
     # 8. Thông tin hiển thị
     info = f"""
-ID: {record_id}
-Chẩn đoán: {label}
-Độ tin cậy: {conf*100:.2f}%
-Bệnh nhân: {patient_name}
-(Đã lưu vĩnh viễn lên Đám mây)
-    """
-    
-    return overlay, info, record_id
+    **Bệnh án ID:** {record_id}
 
+    **Bệnh nhân:** {patient_name}, {age} tuổi, {gender}
+
+    **Chẩn đoán:** {label}
+
+    **Độ tin cậy:** {conf*100:. 2f}%
+
+    **Ghi chú:** {note if note else 'Không có'}
+
+    **Thời gian:** {timestamp}
+
+    *(Đã lưu lên Google Sheets & Cloudinary)*
+    """
+        
+    return overlay, mask_vis, info, record_id, label, conf, timestamp  
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib. styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
+from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf, timestamp, 
+                        overlay_img, mask_img):
+    """Tạo báo cáo PDF"""
+    
+    # Tạo buffer
+    buffer = BytesIO()
+    
+    # Tạo document
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, 
+                           topMargin=2*cm, bottomMargin=2*cm)
+    
+    # Container cho elements
+    elements = []
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1f77b4'),
+        spaceAfter=20,
+        alignment=TA_CENTER
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#2ca02c'),
+        spaceAfter=10
+    )
+    
+    # Tiêu đề
+    title = Paragraph("BÁO CÁO CHẨN ĐOÁN DA LIỄU", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Thông tin bệnh nhân
+    patient_info = [
+        ["<b>Bệnh án ID: </b>", record_id],
+        ["<b>Bệnh nhân:</b>", f"{patient_name}"],
+        ["<b>Tuổi:</b>", f"{age} tuổi"],
+        ["<b>Giới tính:</b>", gender],
+        ["<b>Thời gian:</b>", timestamp],
+        ["<b>Chẩn đoán:</b>", f"<font color='red'><b>{label}</b></font>"],
+        ["<b>Độ tin cậy:</b>", f"{conf*100:. 2f}%"],
+        ["<b>Ghi chú:</b>", note if note else "Không có"]
+    ]
+    
+    table = Table(patient_info, colWidths=[5*cm, 12*cm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+    ]))
+    
+    elements.append(table)
+    elements.append(Spacer(1, 1*cm))
+    
+    # Thêm ảnh overlay
+    heading = Paragraph("Ảnh Overlay (Phân vùng tổn thương)", heading_style)
+    elements.append(heading)
+    
+    # Convert numpy array to PIL Image, then save to buffer
+    overlay_pil = Image. fromarray(overlay_img)
+    img_buffer = BytesIO()
+    overlay_pil.save(img_buffer, format='PNG')
+    img_buffer.seek(0)
+    
+    img = RLImage(img_buffer, width=12*cm, height=12*cm)
+    elements.append(img)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # Thêm ảnh mask
+    heading2 = Paragraph("Mask Phân vùng", heading_style)
+    elements.append(heading2)
+    
+    mask_pil = Image. fromarray(mask_img)
+    mask_buffer = BytesIO()
+    mask_pil.save(mask_buffer, format='PNG')
+    mask_buffer.seek(0)
+    
+    img2 = RLImage(mask_buffer, width=12*cm, height=12*cm)
+    elements.append(img2)
+    
+    # Footer
+    elements.append(Spacer(1, 1*cm))
+    footer_text = "<i>Báo cáo được tạo tự động bởi Hệ thống Chẩn đoán Da liễu AI</i>"
+    footer = Paragraph(footer_text, styles['Normal'])
+    elements.append(footer)
+    
+    # Build PDF
+    doc.build(elements)
+    
+    buffer.seek(0)
+    return buffer
 # =================================================================
 # 5. HÀM TRA CỨU BỆNH ÁN
 # =================================================================
@@ -451,19 +570,40 @@ with tabs[0]:
     note = st.text_area("Ghi chú (Tiền sử, mô tả triệu chứng ... )")
     
     if st.button("Chẩn đoán"):
-        if uploaded and patient_name and age:  
+        if uploaded and patient_name and age:   
             file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, 1)
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             
             with st.spinner("Đang phân tích..."):
-                overlay, info, record_id = run_inference(img_rgb, patient_name, age, gender, note)
+                overlay, mask_vis, info, record_id, label, conf, timestamp = run_inference(img_rgb, patient_name, age, gender, note)
             
-            st.image(overlay, caption="Ảnh Overlay (Phân vùng + Gốc)", use_container_width=True)
-            st.success(info)
-            st.write(f"ID bệnh án (medical record ID): `{record_id}`\n(Lưu lại để tra cứu)")
+            # Hiển thị overlay
+            st. image(overlay, caption="Ảnh Overlay (Phân vùng + Gốc)", use_container_width=True)
+            
+            # Hiển thị thông tin (có xuống dòng)
+            st.info(info)
+            
+            st.write(f"**ID bệnh án:** `{record_id}` (Lưu lại để tra cứu)")
+            
+            # ===== NÚT DOWNLOAD PDF =====
+            with st.spinner("Đang tạo báo cáo PDF..."):
+                # mask_vis đã có rồi, KHÔNG CẦN tạo lại
+                pdf_buffer = generate_pdf_report(
+                    record_id, patient_name, age, gender, note, 
+                    label, conf, timestamp,
+                    overlay, mask_vis  # ← Dùng mask_vis đã có từ run_inference
+                )
+
+            st.download_button(
+                label="📥 Tải báo cáo PDF",
+                data=pdf_buffer,
+                file_name=f"benh_an_{record_id}. pdf",
+                mime="application/pdf"
+            )
+            
         else:
-            st. warning("Vui lòng nhập đầy đủ thông tin và tải ảnh lên")
+            st.warning("Vui lòng nhập đầy đủ thông tin và tải ảnh lên")
 
 # TAB 2: TRA CỨU BỆNH ÁN
 with tabs[1]:  
