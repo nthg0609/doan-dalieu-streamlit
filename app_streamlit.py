@@ -24,7 +24,8 @@ def download_if_missing(url, filename):
 
 # Tải file DeepLab nếu chưa có
 download_if_missing(
-    "https://huggingface.co/spaces/nthg0609/DoAn_DaLieu/resolve/main/deeplabv3plus_best.pth"
+    "https://huggingface.co/spaces/nthg0609/DoAn_DaLieu/resolve/main/deeplabv3plus_best.pth",
+    "deeplabv3plus_best.pth"  # ← THÊM DÒNG NÀY
 )
 # ==== Google Sheets Setup ====
 import gspread
