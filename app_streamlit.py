@@ -16,26 +16,9 @@ def safe_str(s):
     return "".join(c for c in s if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')
 
 
-# ==== LOAD CHECKPOINTS ====
-with open("02_unet_complete.json", "r") as f:
-    unet_ckpt = json.load(f)
-with open("03_deeplabv3plus_complete.json", "r") as f:
-    deeplab_ckpt = json.load(f)
-with open("06_classification_complete.json", "r") as f:
-    cls_ckpt = json.load(f)
-
-import segmentation_models_pytorch as smp
-import timm
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# --- SEGMENTATION MODELS ---
-unet = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1, activation=None)
-unet.load_state_dict(torch.load(unet_ckpt["paths"]["best_model"], map_location=device)["model_state_dict"])
-unet = unet.eval().to(device)
-deeplab = smp.DeepLabV3Plus(encoder_name="resnet50", encoder_weights=None, in_channels=3, classes=1, activation=None)
-deeplab.load_state_dict(torch.load(deeplab_ckpt["paths"]["best_model"], map_location=device)["model_state_dict"])
-deeplab = deeplab.eval().to(device)
+# =================================================================
+# 1. ĐỊNH NGHĨA CÁC LỚP MÔ HÌNH (Phải đặt trước khi sử dụng)
+# =================================================================
 
 class HybridSegmentation(nn.Module):
     def __init__(self, unet, deeplab):
@@ -47,16 +30,6 @@ class HybridSegmentation(nn.Module):
             pred_unet = torch.sigmoid(self.unet(x))
             pred_dl = torch.sigmoid(self.deeplab(x))
             return torch.max(pred_unet, pred_dl)
-hybrid = HybridSegmentation(unet, deeplab).eval().to(device)
-
-# --- CLASSIFICATION MODEL (EfficientNet + CBAM) ---
-class CBAM(nn.Module):
-    def __init__(self, in_channels, reduction=16):
-        super().__init__()
-        self.channel_att = ChannelAttention(in_channels, reduction)
-        self.spatial_att = SpatialAttention()
-    def forward(self, x):
-        return x * self.channel_att(x) * self.spatial_att(x * self.channel_att(x))
 
 class ChannelAttention(nn.Module):
     def __init__(self, in_channels, reduction=16):
@@ -84,9 +57,19 @@ class SpatialAttention(nn.Module):
         x = self.conv(x)
         return self.sigmoid(x)
 
+class CBAM(nn.Module):
+    def __init__(self, in_channels, reduction=16):
+        super().__init__()
+        self.channel_att = ChannelAttention(in_channels, reduction)
+        self.spatial_att = SpatialAttention()
+    def forward(self, x):
+        x_att = x * self.channel_att(x)
+        return x_att * self.spatial_att(x_att)
+
 class EfficientNetWithAttention(nn.Module):
     def __init__(self, num_classes, pretrained=False):
         super().__init__()
+        import timm
         self.backbone = timm.create_model('efficientnet_b0', pretrained=False, num_classes=0)
         self.feature_dim = self.backbone.num_features
         self.attention = CBAM(self.feature_dim, reduction=16)
@@ -104,15 +87,52 @@ class EfficientNetWithAttention(nn.Module):
         features_pooled = self.global_pool(features_att).flatten(1)
         return self.classifier(features_pooled)
 
-num_classes = cls_ckpt["config"]["num_classes"]
-class_to_idx = cls_ckpt.get("class_to_idx", None)
-if not class_to_idx:
-    class_to_idx = torch.load(cls_ckpt["paths"]["best_model"], map_location=device).get("class_to_idx")
-idx_to_class = {v: k for k, v in class_to_idx.items()}
-cls_model = EfficientNetWithAttention(num_classes=num_classes)
-state = torch.load(cls_ckpt["paths"]["best_model"], map_location=device)
-cls_model.load_state_dict(state['model_state_dict'])
-cls_model = cls_model.eval().to(device)
+# =================================================================
+# 2. HÀM TẢI MÔ HÌNH TỐI ƯU (Sử dụng Cache để tiết kiệm RAM)
+# =================================================================
+
+@st.cache_resource
+def load_all_models():
+    import segmentation_models_pytorch as smp
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Hàm xử lý lỗi đường dẫn tuyệt đối từ Windows sang Linux
+    def get_valid_path(json_data):
+        original_path = json_data["paths"]["best_model"]
+        filename = os.path.basename(original_path)  # Chỉ lấy tên file
+        return filename if os.path.exists(filename) else original_path
+
+    # Tải cấu hình từ các file JSON
+    with open("02_unet_complete.json", "r") as f: unet_ckpt = json.load(f)
+    with open("03_deeplabv3plus_complete.json", "r") as f: deeplab_ckpt = json.load(f)
+    with open("06_classification_complete.json", "r") as f: cls_ckpt = json.load(f)
+
+    # Khởi tạo và tải trọng số cho Segmentation
+    unet = smp.Unet(encoder_name="resnet34", encoder_weights=None, in_channels=3, classes=1, activation=None)
+    unet.load_state_dict(torch.load(get_valid_path(unet_ckpt), map_location=device)["model_state_dict"])
+    
+    deeplab = smp.DeepLabV3Plus(encoder_name="resnet50", encoder_weights=None, in_channels=3, classes=1, activation=None)
+    deeplab.load_state_dict(torch.load(get_valid_path(deeplab_ckpt), map_location=device)["model_state_dict"])
+    
+    hybrid_model = HybridSegmentation(unet, deeplab).eval().to(device)
+
+    # Khởi tạo và tải trọng số cho Classification
+    num_classes = cls_ckpt["config"]["num_classes"]
+    cls_path = get_valid_path(cls_ckpt)
+    state = torch.load(cls_path, map_location=device)
+    
+    # Lấy ánh xạ lớp
+    class_to_idx = state.get("class_to_idx") or cls_ckpt.get("class_to_idx")
+    idx_to_class = {v: k for k, v in class_to_idx.items()}
+    
+    cls_model = EfficientNetWithAttention(num_classes=num_classes)
+    cls_model.load_state_dict(state['model_state_dict'])
+    cls_model = cls_model.eval().to(device)
+    
+    return hybrid_model, cls_model, idx_to_class, device
+
+# Thực thi tải mô hình duy nhất một lần
+hybrid, cls_model, idx_to_class, device = load_all_models()
 
 def preprocess_for_segmentation(image):
     img = cv2.resize(image, (256, 256)).astype(np.float32) / 255.0
