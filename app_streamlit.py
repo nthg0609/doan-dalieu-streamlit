@@ -311,18 +311,29 @@ def _remove_emoji(s):
     except re.error:
         return ''.join(ch for ch in s if ord(ch) <= 0xFFFF)
 
+
 def _find_font_pair():
+    # Lấy thư mục hiện tại của file script này
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Định nghĩa các ứng viên bằng đường dẫn tương đối
+    # os.path.join giúp tự động điều chỉnh dấu / hoặc \ tùy theo hệ điều hành (Windows/Linux)
     candidates = [
-        (r"D:\Download\DoAn2\Checkpoint\fonts\static\Roboto-Regular.ttf",
-         r"D:\Download\DoAn2\Checkpoint\fonts\static\Roboto-Bold.ttf"),
-        (r"D:\Download\DoAn2\Checkpoint\fonts\DejaVuSans.ttf",
-         r"D:\Download\DoAn2\Checkpoint\fonts\DejaVuSans-Bold.ttf"),
-        (r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf"),
-        (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
+        (os.path.join(base_dir, "fonts", "static", "Roboto-Regular.ttf"),
+         os.path.join(base_dir, "fonts", "static", "Roboto-Bold.ttf")),
+        
+        (os.path.join(base_dir, "fonts", "DejaVuSans.ttf"),
+         os.path.join(base_dir, "fonts", "DejaVuSans-Bold.ttf")),
+        
+        # Fallback cho Linux server nếu các font trên bị thiếu
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
     ]
+    
     for reg, bold in candidates:
         if os.path.exists(reg):
             return reg, (bold if os.path.exists(bold) else None)
+            
     return None, None
 
 def _text_size(draw, text, font):
@@ -605,7 +616,7 @@ with tabs[0]:
     age = st.number_input("Tuổi", min_value=0, max_value=120, step=1)
     gender = st.radio("Giới tính", options=["Nam", "Nữ"])
     note = st.text_area("Ghi chú (Tiền sử, mô tả triệu chứng ...)")
-    if st.button("🩻 Chẩn đoán"):
+    if st.button("Chẩn đoán"):
         if uploaded and patient_name and age:
             file_bytes = np.asarray(bytearray(uploaded.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, 1)
