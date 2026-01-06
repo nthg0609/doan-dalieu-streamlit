@@ -18,7 +18,6 @@ warnings.filterwarnings("ignore")
 def safe_str(s):
     return "".join(c for c in s if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')
 
-from streamlit_gsheets import GSheetsConnection
 import cloudinary
 import cloudinary.uploader
 
@@ -30,7 +29,7 @@ cloudinary.config(
 )
 
 # Kết nối Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+conn = st.connection("gsheets")
 
 def upload_to_cloud(image_path):
     """Upload ảnh lên Cloudinary"""
