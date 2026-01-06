@@ -598,7 +598,7 @@ with tabs[0]:
             st.download_button(
                 label="📥 Tải báo cáo PDF",
                 data=pdf_buffer,
-                file_name=f"benh_an_{record_id}. pdf",
+                file_name=f"benh_an_{record_id}.pdf",
                 mime="application/pdf"
             )
             
