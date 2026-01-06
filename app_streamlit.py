@@ -376,7 +376,19 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf, timestamp, 
                         overlay_img, mask_img):
-    """Tạo báo cáo PDF"""
+    """Tạo báo cáo PDF với font tiếng Việt"""
+    
+    # ===== ĐĂNG KÝ FONT TIẾNG VIỆT =====
+    try:
+        # Thử dùng font DejaVu (có sẵn trên Linux)
+        pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+        pdfmetrics.registerFont(TTFont('DejaVu-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold. ttf'))
+        font_name = 'DejaVu'
+        font_bold = 'DejaVu-Bold'
+    except: 
+        # Fallback:  Dùng Helvetica (không hỗ trợ tiếng Việt tốt)
+        font_name = 'Helvetica'
+        font_bold = 'Helvetica-Bold'
     
     # Tạo buffer
     buffer = BytesIO()
@@ -393,6 +405,7 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
+        fontName=font_bold,  # ← SỬA
         fontSize=18,
         textColor=colors.HexColor('#1f77b4'),
         spaceAfter=20,
@@ -402,8 +415,9 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
+        fontName=font_bold,  # ← SỬA
         fontSize=14,
-        textColor=colors.HexColor('#2ca02c'),
+        textColor=colors. HexColor('#2ca02c'),
         spaceAfter=10
     )
     
@@ -414,14 +428,14 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     
     # Thông tin bệnh nhân
     patient_info = [
-        ["<b>Bệnh án ID: </b>", record_id],
-        ["<b>Bệnh nhân:</b>", f"{patient_name}"],
-        ["<b>Tuổi:</b>", f"{age} tuổi"],
-        ["<b>Giới tính:</b>", gender],
-        ["<b>Thời gian:</b>", timestamp],
-        ["<b>Chẩn đoán:</b>", f"<font color='red'><b>{label}</b></font>"],
-        ["<b>Độ tin cậy:</b>", f"{conf*100:.2f}%"],
-        ["<b>Ghi chú:</b>", note if note else "Không có"]
+        ["Bệnh án ID:", record_id],
+        ["Bệnh nhân:", patient_name],
+        ["Tuổi:", f"{age} tuổi"],
+        ["Giới tính:", gender],
+        ["Thời gian:", timestamp],
+        ["Chẩn đoán:", label],
+        ["Độ tin cậy:", f"{conf*100:.2f}%"],
+        ["Ghi chú:", note if note else "Không có"]
     ]
     
     table = Table(patient_info, colWidths=[5*cm, 12*cm])
@@ -430,7 +444,8 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 0), (0, -1), font_bold),  # ← SỬA (cột trái bold)
+        ('FONTNAME', (1, 0), (1, -1), font_name),  # ← SỬA (cột phải normal)
         ('FONTSIZE', (0, 0), (-1, -1), 11),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
         ('GRID', (0, 0), (-1, -1), 1, colors.grey)
@@ -443,8 +458,8 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     heading = Paragraph("Ảnh Overlay (Phân vùng tổn thương)", heading_style)
     elements.append(heading)
     
-    # Convert numpy array to PIL Image, then save to buffer
-    overlay_pil = Image. fromarray(overlay_img)
+    # Convert numpy array to PIL Image
+    overlay_pil = Image.fromarray(overlay_img)
     img_buffer = BytesIO()
     overlay_pil.save(img_buffer, format='PNG')
     img_buffer.seek(0)
@@ -467,8 +482,9 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
     
     # Footer
     elements.append(Spacer(1, 1*cm))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontName=font_name, fontSize=10)
     footer_text = "<i>Báo cáo được tạo tự động bởi Hệ thống Chẩn đoán Da liễu AI</i>"
-    footer = Paragraph(footer_text, styles['Normal'])
+    footer = Paragraph(footer_text, footer_style)
     elements.append(footer)
     
     # Build PDF
@@ -537,7 +553,7 @@ def load_patient_images(record_id):
         info = (
             f"**Bệnh án ID:** {r['record_id']}  \n"
             f"**Bệnh nhân:** {r['name']}, {r['age']} tuổi  \n"
-            f"**Chẩn đoán:** {r['diagnosis_label']}  \n"
+            f"**Chẩn đoán:** {r['diagnosis']}  \n"
             f"**Ghi chú:** {r['note']}"
         )
         
