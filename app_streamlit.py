@@ -354,7 +354,7 @@ def run_inference(image, patient_name, age, gender, note):
 
     **Chẩn đoán:** {label}
 
-    **Độ tin cậy:** {conf*100:. 2f}%
+    **Độ tin cậy:** {conf*100:.2f}%
 
     **Ghi chú:** {note if note else 'Không có'}
 
@@ -420,7 +420,7 @@ def generate_pdf_report(record_id, patient_name, age, gender, note, label, conf,
         ["<b>Giới tính:</b>", gender],
         ["<b>Thời gian:</b>", timestamp],
         ["<b>Chẩn đoán:</b>", f"<font color='red'><b>{label}</b></font>"],
-        ["<b>Độ tin cậy:</b>", f"{conf*100:. 2f}%"],
+        ["<b>Độ tin cậy:</b>", f"{conf*100:.2f}%"],
         ["<b>Ghi chú:</b>", note if note else "Không có"]
     ]
     
@@ -535,10 +535,10 @@ def load_patient_images(record_id):
         mask_img = get_img(r['url_mask'])
         
         info = (
-            f"Bệnh án ID: {r['record_id']}\n"
-            f"Bệnh nhân: {r['name']}, {r['age']} tuổi\n"
-            f"Chẩn đoán: {r['diagnosis']}\n"
-            f"Ghi chú: {r['note']}"
+            f"**Bệnh án ID:** {r['record_id']}  \n"
+            f"**Bệnh nhân:** {r['name']}, {r['age']} tuổi  \n"
+            f"**Chẩn đoán:** {r['diagnosis_label']}  \n"
+            f"**Ghi chú:** {r['note']}"
         )
         
         return (
